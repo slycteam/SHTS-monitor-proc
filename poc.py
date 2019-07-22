@@ -1,9 +1,16 @@
-import datetime
+from datetime import datetime
 import subprocess as sub
 import re
 
+# TODO pip install ipwhois
+from ipwhois import IPWhois
+
+
+
 # TODO config info
 SNOOZE_INTERVAL = 1 * 60 * 60 # 1 hour in seconds
+DATETIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
 
 re_srcMAC = re.compile("[0-9a-f:]{17}(?=\s>)")
 re_dstIP = re.compile("(?<=(>\s))[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}.[0-9]{1,3}")
@@ -33,18 +40,19 @@ ingnoreIPs = 'and dst host not ('+' and '.join(whitelist_IP)+')' if (whitelist_I
 
 
 def need_alerts(srcMAC, dstIP):
-    # TODO  notification function implement
-    print(datetime.datetime.now(), srcMAC, dstIP)
+    # print(datetime.datetime.now(), srcMAC, dstIP)
     if srcMAC in confirmed_List.keys() :
         if dstIP in confirmed_List[srcMAC] : return False
     mac_ip = srcMAC + ' ' + dstIP
     if mac_ip in alerted_List.keys() :
-        dt = datetime.datetime.now() - datetime.datetime.strptime(alerted_List[mac_ip],'%Y-%m-%d %H:%M:%S')
+        dt = datetime.now() - datetime.strptime(alerted_List[mac_ip],DATETIME_FORMAT)
         if SNOOZE_INTERVAL > dt.seconds : return False
     return True
 
 def notification(srcMAC, dstIP):
     # TODO  notification function implement
+    alerted_List[srcMAC+' '+dstIP] = datetime.now().strftime(DATETIME_FORMAT)
+    get_whois(dstIP)
     print('Alert!',srcMAC, dstIP)
 
 
@@ -54,10 +62,16 @@ def get_manuf(val):
     # 상기 파일을 sqlite에 넣고 쿼리하는 방향으로 생각중
     print(val)
 
-def get_whois(val):
+def get_whois(ip):
     # TODO  whois ip search funtion implement
     # whois 명령으로 netname,descr,country 추출
-    print(val)
+    print('-------',ip)
+    try:
+        r = IPWhois(ip).lookup_whois()
+        print(r['asn_description'])
+    except:
+        print('unkown host!!!!!')
+    #r = IPWhois(ip).lookup_rdap(depth=1)
 
 
 # excute tcpdump and console read
@@ -67,7 +81,12 @@ p = sub.Popen(
         , '-letnq'
         , 'not broadcast' 
         , 'and ip' #IPv4 only
-        , 'and dst net not (10.0.0.0/8 and 172.16.0.0/12 and 192.168.0.0/16 and 127.0.0.0/8 )'  #exclude local network traffic
+        , 'and dst net not 224.0.0.0/24'  #exclude multicast traffic
+        , 'and dst net not 10.0.0.0/8'  #exclude local network traffic
+        , 'and dst net not 172.16.0.0/12'  #exclude local network traffic
+        , 'and dst net not 192.168.0.0/16'  #exclude local network traffic
+        , 'and dst net not 127.0.0.0/8'  #exclude local network traffic
+        #, 'and dst net not (10.0.0.0/8 and 172.16.0.0/12 and 192.168.0.0/16 and 127.0.0.0/8 )'  #exclude local network traffic
         , ingnoreMACs
         , ingnoreIPs
         , '-c 1000' #for test
